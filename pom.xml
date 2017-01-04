@@ -61,7 +61,7 @@
       <dependency>
          <groupId>org.aesh</groupId>
          <artifactId>aesh-readline</artifactId>
-         <version>1.0-CR8-SNAPSHOT</version>
+         <version>1.0-CR11-SNAPSHOT</version>
       </dependency>
 
    </dependencies>

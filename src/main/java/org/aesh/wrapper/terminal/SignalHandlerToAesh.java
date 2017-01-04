@@ -17,53 +17,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.aesh.wrapper.reader;
+package org.aesh.wrapper.terminal;
 
-import org.aesh.util.Parser;
-import org.jline.reader.ParsedLine;
 
-import java.util.List;
+import org.aesh.terminal.Terminal;
+import org.aesh.tty.Signal;
 
 /**
  * @author <a href="mailto:stale.pedersen@jboss.org">Ståle W. Pedersen</a>
  */
-public class ParsedLineImpl implements ParsedLine {
+public class SignalHandlerToAesh implements Terminal.SignalHandler {
 
+    private final org.jline.terminal.Terminal.SignalHandler jlineSH;
 
-    private final org.aesh.util.ParsedLine parsedLine;
-
-    public ParsedLineImpl(String line, int cursor) {
-        org.aesh.util.ParsedLine parsedLine = Parser.findAllWords(line, cursor);
-        this.parsedLine = parsedLine;
+    public SignalHandlerToAesh(org.jline.terminal.Terminal.SignalHandler jlineSH) {
+        this.jlineSH = jlineSH;
     }
 
     @Override
-    public String word() {
-        return parsedLine.selectedWord();
+    public void handle(Signal signal) {
+        jlineSH.handle(SignalTransformer.transformSignalToJLine(signal));
     }
 
-    @Override
-    public int wordCursor() {
-        return parsedLine.wordCursor();
-    }
-
-    @Override
-    public int wordIndex() {
-        return parsedLine.selectedIndex();
-    }
-
-    @Override
-    public List<String> words() {
-        return parsedLine.words();
-    }
-
-    @Override
-    public String line() {
-        return parsedLine.line();
-    }
-
-    @Override
-    public int cursor() {
-        return parsedLine.cursor();
-    }
 }

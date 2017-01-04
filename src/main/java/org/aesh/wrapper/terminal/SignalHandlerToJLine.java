@@ -17,53 +17,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.aesh.wrapper.reader;
+package org.aesh.wrapper.terminal;
 
-import org.aesh.util.Parser;
-import org.jline.reader.ParsedLine;
-
-import java.util.List;
+import org.jline.terminal.Terminal;
 
 /**
  * @author <a href="mailto:stale.pedersen@jboss.org">Ståle W. Pedersen</a>
  */
-public class ParsedLineImpl implements ParsedLine {
+public class SignalHandlerToJLine implements Terminal.SignalHandler {
 
+    private final org.aesh.terminal.Terminal.SignalHandler aeshSH;
 
-    private final org.aesh.util.ParsedLine parsedLine;
-
-    public ParsedLineImpl(String line, int cursor) {
-        org.aesh.util.ParsedLine parsedLine = Parser.findAllWords(line, cursor);
-        this.parsedLine = parsedLine;
+    public SignalHandlerToJLine(org.aesh.terminal.Terminal.SignalHandler aeshSH) {
+        this.aeshSH = aeshSH;
     }
 
     @Override
-    public String word() {
-        return parsedLine.selectedWord();
-    }
-
-    @Override
-    public int wordCursor() {
-        return parsedLine.wordCursor();
-    }
-
-    @Override
-    public int wordIndex() {
-        return parsedLine.selectedIndex();
-    }
-
-    @Override
-    public List<String> words() {
-        return parsedLine.words();
-    }
-
-    @Override
-    public String line() {
-        return parsedLine.line();
-    }
-
-    @Override
-    public int cursor() {
-        return parsedLine.cursor();
+    public void handle(Terminal.Signal signal) {
+        aeshSH.handle(SignalTransformer.transformSignalToAesh(signal));
     }
 }

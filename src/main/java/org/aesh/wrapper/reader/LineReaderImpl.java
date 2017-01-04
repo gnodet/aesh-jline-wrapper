@@ -23,6 +23,7 @@ import org.aesh.readline.Prompt;
 import org.aesh.readline.Readline;
 import org.aesh.readline.completion.Completion;
 import org.aesh.tty.terminal.TerminalConnection;
+import org.aesh.wrapper.terminal.TerminalImpl;
 import org.jline.keymap.KeyMap;
 import org.jline.reader.Binding;
 import org.jline.reader.EndOfFileException;
@@ -39,6 +40,7 @@ import org.jline.terminal.Terminal;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * @author <a href="mailto:stale.pedersen@jboss.org">Ståle W. Pedersen</a>
@@ -47,21 +49,51 @@ public class LineReaderImpl implements LineReader {
 
     private Readline readline;
     private TerminalConnection connection;
+    private TerminalImpl terminal;
     private Prompt prompt;
+    private BufferImpl buf;
     private List<Completion> completions;
 
-    public LineReaderImpl(Readline readline, TerminalConnection connection, Prompt prompt) {
+    public LineReaderImpl(Readline readline, TerminalConnection connection,
+                          TerminalImpl terminal,
+                          Prompt prompt) {
         this.readline = readline;
         this.connection = connection;
+        this.terminal = terminal;
         if(prompt == null)
             this.prompt = new Prompt("");
         else
             this.prompt = prompt;
+
+        buf = new BufferImpl();
+
+        connection.setCloseHandler(close -> {
+            connection.close();
+        });
+
+        if(!connection.isReading())
+            connection.openNonBlocking();
     }
 
     private String readInput(Prompt prompt) {
         final String[] out = new String[1];
-        readline.readline(connection, prompt, s -> out[0] = s);
+        CountDownLatch latch = new CountDownLatch(1);
+       readline.readline(connection, prompt, line -> {
+            connection.suspend();
+            out[0] = line;
+            latch.countDown();
+        } );
+        try {
+           // Wait until interrupted
+            latch.await();
+        }
+        catch(InterruptedException ie) {
+
+        }
+        if(out[0] != null) {
+            buf.clear();
+            buf.write(out[0]);
+        }
         return out[0];
     }
 
@@ -145,7 +177,7 @@ public class LineReaderImpl implements LineReader {
 
     @Override
     public Terminal getTerminal() {
-        return null;
+        return terminal;
     }
 
     @Override
@@ -160,7 +192,7 @@ public class LineReaderImpl implements LineReader {
 
     @Override
     public BufferImpl getBuffer() {
-        return null;
+        return buf;
     }
 
     @Override
@@ -175,7 +207,7 @@ public class LineReaderImpl implements LineReader {
 
     @Override
     public Parser getParser() {
-        return null;
+        return new ParserImpl();
     }
 
     @Override

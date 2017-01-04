@@ -22,6 +22,8 @@ package org.aesh.wrapper.reader;
 import org.aesh.readline.ReadlineBuilder;
 import org.aesh.readline.history.InMemoryHistory;
 import org.aesh.tty.terminal.TerminalConnection;
+import org.aesh.wrapper.terminal.TerminalBuilder;
+import org.aesh.wrapper.terminal.TerminalImpl;
 import org.jline.reader.Completer;
 import org.jline.reader.Expander;
 import org.jline.reader.Highlighter;
@@ -63,11 +65,15 @@ public class LineReaderBuilder {
         return this;
     }
 
+    public LineReaderBuilder terminal(Terminal terminal) {
+        return apply(c -> c.terminal = terminal);
+    }
+
     public LineReaderBuilder history(History history) {
         return apply(c -> c.history = history);
     }
 
-    public LineReaderBuilder completer(Completer history) {
+    public LineReaderBuilder completer(Completer completer) {
         return apply(c -> c.completer = completer);
     }
 
@@ -91,17 +97,21 @@ public class LineReaderBuilder {
         return apply(c -> c.variables.putAll(variables));
     }
 
-
     public LineReader build() {
         try {
-            TerminalConnection connection = new TerminalConnection();
+            if(terminal != null && !(terminal instanceof TerminalImpl)) {
+                throw new RuntimeException("ERROR: The terminal given must be created by the TerminalBuilder!");
+            }
+            if(terminal == null)
+                terminal = TerminalBuilder.builder().build();
+
+            TerminalConnection connection = new TerminalConnection(((TerminalImpl) terminal).getBase());
 
             ReadlineBuilder builder = ReadlineBuilder.builder();
             if(history != null)
                 builder.history(new InMemoryHistory(history.size()));
 
-            return new LineReaderImpl(builder.build(), connection, null);
-
+            return new LineReaderImpl(builder.build(), connection, ((TerminalImpl) terminal), null);
         }
         catch(IOException e) {
             e.printStackTrace();
