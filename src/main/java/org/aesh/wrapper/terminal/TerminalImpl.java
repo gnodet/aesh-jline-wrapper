@@ -130,22 +130,22 @@ public class TerminalImpl implements Terminal {
 
     @Override
     public boolean puts(InfoCmp.Capability capability, Object... objects) {
-        return false;
+        return base.puts(Capability.valueOf(capability.name()), objects);
     }
 
     @Override
     public boolean getBooleanCapability(InfoCmp.Capability capability) {
-        return false;
+        return base.getBooleanCapability(Capability.valueOf(capability.name()));
     }
 
     @Override
     public Integer getNumericCapability(InfoCmp.Capability capability) {
-        return null;
+        return base.getNumericCapability(Capability.valueOf(capability.name()));
     }
 
     @Override
     public String getStringCapability(InfoCmp.Capability capability) {
-        return null;
+        return base.getStringCapability(Capability.valueOf(capability.name()));
     }
 
     @Override

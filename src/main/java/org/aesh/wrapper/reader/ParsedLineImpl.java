@@ -19,9 +19,10 @@
  */
 package org.aesh.wrapper.reader;
 
-import org.aesh.util.Parser;
+import org.aesh.parser.LineParser;
 import org.jline.reader.ParsedLine;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,16 +31,16 @@ import java.util.List;
 public class ParsedLineImpl implements ParsedLine {
 
 
-    private final org.aesh.util.ParsedLine parsedLine;
+    private final org.aesh.parser.ParsedLine parsedLine;
 
     public ParsedLineImpl(String line, int cursor) {
-        org.aesh.util.ParsedLine parsedLine = Parser.findAllWords(line, cursor);
+        org.aesh.parser.ParsedLine parsedLine = LineParser.parseLine(line, cursor);
         this.parsedLine = parsedLine;
     }
 
     @Override
     public String word() {
-        return parsedLine.selectedWord();
+        return parsedLine.selectedWord().word();
     }
 
     @Override
@@ -54,7 +55,10 @@ public class ParsedLineImpl implements ParsedLine {
 
     @Override
     public List<String> words() {
-        return parsedLine.words();
+        List<String> w = new ArrayList<>(parsedLine.words().size());
+        for(org.aesh.parser.ParsedWord word : parsedLine.words())
+            w.add(word.word());
+        return w;
     }
 
     @Override

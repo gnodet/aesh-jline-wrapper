@@ -10,19 +10,14 @@ package example;
 
 import org.aesh.wrapper.reader.LineReaderBuilder;
 import org.aesh.wrapper.terminal.TerminalBuilder;
-import org.jline.keymap.KeyMap;
-import org.jline.reader.Binding;
 import org.jline.reader.Candidate;
 import org.jline.reader.Completer;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
-import org.jline.reader.Macro;
 import org.jline.reader.ParsedLine;
 import org.jline.reader.Parser;
-import org.jline.reader.Reference;
 import org.jline.reader.UserInterruptException;
 import org.jline.reader.impl.DefaultParser;
-import org.jline.reader.impl.LineReaderImpl;
 import org.jline.reader.impl.completer.ArgumentCompleter;
 import org.jline.reader.impl.completer.FileNameCompleter;
 import org.jline.reader.impl.completer.StringsCompleter;
@@ -37,15 +32,14 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.Map;
 
 import static java.time.temporal.ChronoField.HOUR_OF_DAY;
 import static java.time.temporal.ChronoField.MINUTE_OF_HOUR;
 
 
-public class Example {
+public class WrapperExample {
     public static void usage() {
-        System.out.println("Usage: java " + Example.class.getName()
+        System.out.println("Usage: java " + WrapperExample.class.getName()
                 + " [none/simple/files/dictionary [trigger mask]]");
         System.out.println("  none - no completors");
         System.out.println("  simple - a simple completor that comples "
@@ -246,6 +240,7 @@ public class Example {
                         }
                     }
                 }
+                /*
                 else if ("bindkey".equals(pl.word())) {
                     if (pl.words().size() == 1) {
                         StringBuilder sb = new StringBuilder();
@@ -294,6 +289,7 @@ public class Example {
                 else if ("sleep".equals(pl.word())) {
                     Thread.sleep(3000);
                 }
+                */
             }
             terminal.close();
         }

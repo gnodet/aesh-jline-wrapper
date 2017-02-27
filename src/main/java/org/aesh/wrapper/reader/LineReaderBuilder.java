@@ -102,8 +102,10 @@ public class LineReaderBuilder {
             if(terminal != null && !(terminal instanceof TerminalImpl)) {
                 throw new RuntimeException("ERROR: The terminal given must be created by the TerminalBuilder!");
             }
-            if(terminal == null)
+            if(terminal == null) {
+                System.out.println("creating a new terminal..");
                 terminal = TerminalBuilder.builder().build();
+            }
 
             TerminalConnection connection = new TerminalConnection(((TerminalImpl) terminal).getBase());
 
@@ -111,7 +113,7 @@ public class LineReaderBuilder {
             if(history != null)
                 builder.history(new InMemoryHistory(history.size()));
 
-            return new LineReaderImpl(builder.build(), connection, ((TerminalImpl) terminal), null);
+            return new LineReaderImpl(builder.build(), connection, ((TerminalImpl) terminal), completer, null);
         }
         catch(IOException e) {
             e.printStackTrace();

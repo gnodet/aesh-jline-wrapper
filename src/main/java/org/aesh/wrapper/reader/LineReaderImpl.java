@@ -23,9 +23,11 @@ import org.aesh.readline.Prompt;
 import org.aesh.readline.Readline;
 import org.aesh.readline.completion.Completion;
 import org.aesh.tty.terminal.TerminalConnection;
+import org.aesh.wrapper.completion.CompletionWrapper;
 import org.aesh.wrapper.terminal.TerminalImpl;
 import org.jline.keymap.KeyMap;
 import org.jline.reader.Binding;
+import org.jline.reader.Completer;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.Expander;
 import org.jline.reader.Highlighter;
@@ -38,6 +40,8 @@ import org.jline.reader.Widget;
 import org.jline.reader.impl.BufferImpl;
 import org.jline.terminal.Terminal;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -52,10 +56,13 @@ public class LineReaderImpl implements LineReader {
     private TerminalImpl terminal;
     private Prompt prompt;
     private BufferImpl buf;
+    private CompletionWrapper completionWrapper;
+    private final Map<String, Object> variables;
+    private final Map<Option, Boolean> options;
     private List<Completion> completions;
 
     public LineReaderImpl(Readline readline, TerminalConnection connection,
-                          TerminalImpl terminal,
+                          TerminalImpl terminal, Completer completer,
                           Prompt prompt) {
         this.readline = readline;
         this.connection = connection;
@@ -65,11 +72,18 @@ public class LineReaderImpl implements LineReader {
         else
             this.prompt = prompt;
 
+        variables = new HashMap<>();
+        options = new HashMap<>();
+
         buf = new BufferImpl();
 
         connection.setCloseHandler(close -> {
             connection.close();
         });
+
+        completionWrapper = new CompletionWrapper(this, completer);
+        completions = new ArrayList<>(1);
+        completions.add(completionWrapper);
 
         if(!connection.isReading())
             connection.openNonBlocking();
@@ -82,7 +96,7 @@ public class LineReaderImpl implements LineReader {
             connection.suspend();
             out[0] = line;
             latch.countDown();
-        } );
+        }, completions);
         try {
            // Wait until interrupted
             latch.await();
@@ -147,32 +161,34 @@ public class LineReaderImpl implements LineReader {
 
     @Override
     public Map<String, Object> getVariables() {
-        return null;
+        return variables;
     }
 
     @Override
     public Object getVariable(String s) {
-        return null;
+        return variables.get(s);
     }
+
 
     @Override
     public void setVariable(String s, Object o) {
-
+        variables.put(s, o);
     }
 
     @Override
     public boolean isSet(Option option) {
-        return false;
+        Boolean b = options.get(option);
+        return b != null ? b : option.isDef();
     }
 
     @Override
     public void setOpt(Option option) {
-
+        options.put(option, Boolean.TRUE);
     }
 
     @Override
     public void unsetOpt(Option option) {
-
+        options.put(option, Boolean.FALSE);
     }
 
     @Override
