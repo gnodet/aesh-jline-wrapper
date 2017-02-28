@@ -120,7 +120,7 @@ public class TerminalBuilder {
                         .input(input)
                         .output(output)
                         .nativeSignals(nativeSignals)
-                        .system(false)
+                        .system(true)
                         .type(type)
                         .build());
     }
