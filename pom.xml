@@ -31,10 +31,10 @@
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>org.aesh</groupId>
-   <artifactId>jline-wrapper</artifactId>
-   <packaging>jar</packaging>
+   <artifactId>aesh-jline-wrapper</artifactId>
+   <packaging>bundle</packaging>
    <version>1.0-SNAPSHOT</version>
-   <name>JLine-Wrapper</name>
+   <name>Æsh JLine-Wrapper</name>
    <description>A simple wrapper layer that use Æsh-readline under the covers of JLine API</description>
    <scm>
       <connection>scm:git:git://github.com/aeshell/jline-wrapper.git</connection>
@@ -54,8 +54,15 @@
    <dependencies>
       <dependency>
          <groupId>org.jline</groupId>
-         <artifactId>jline</artifactId>
-         <version>3.1.1</version>
+         <artifactId>jline-reader</artifactId>
+         <version>3.2.0</version>
+         <scope>provided</scope>
+         <exclusions>
+            <exclusion>
+               <groupId>org.jline</groupId>
+               <artifactId>jline-terminal</artifactId>
+            </exclusion>
+         </exclusions>
       </dependency>
 
       <dependency>
@@ -96,6 +103,28 @@
                   </goals>
                </execution>
             </executions>
+         </plugin>
+         <plugin>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>maven-bundle-plugin</artifactId>
+            <version>3.2.0</version>
+            <extensions>true</extensions>
+            <configuration>
+               <instructions>
+                  <Export-Package>
+                     org.jline.reader,
+                     org.jline.reader.impl,
+                     org.jline.reader.impl.history,
+                     org.jline.keymap,
+                     org.aesh.wrapper.*
+                  </Export-Package>
+                  <Private-Package>
+                     org.jline.reader;-split-package:=merge-first,
+                     org.jline.reader.impl;-split-package:=first,
+                     org.jline.reader.impl.history;-split-package:=first,
+                  </Private-Package>
+               </instructions>
+            </configuration>
          </plugin>
          <plugin>
             <artifactId>maven-compiler-plugin</artifactId>

@@ -19,15 +19,22 @@
  */
 package org.aesh.wrapper.reader;
 
+import org.aesh.readline.ConsoleBuffer;
+import org.aesh.readline.InputProcessor;
 import org.aesh.readline.Prompt;
 import org.aesh.readline.Readline;
-import org.aesh.readline.completion.Completion;
+import org.aesh.readline.action.Action;
+import org.aesh.readline.action.mappings.Enter;
+import org.aesh.readline.completion.CompletionHandler;
+import org.aesh.readline.editing.EditMode;
+import org.aesh.readline.editing.EditModeBuilder;
+import org.aesh.terminal.Key;
 import org.aesh.tty.terminal.TerminalConnection;
-import org.aesh.wrapper.completion.CompletionWrapper;
-import org.aesh.wrapper.terminal.TerminalImpl;
 import org.jline.keymap.KeyMap;
 import org.jline.reader.Binding;
+import org.jline.reader.Buffer;
 import org.jline.reader.Completer;
+import org.jline.reader.EOFError;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.Expander;
 import org.jline.reader.Highlighter;
@@ -35,128 +42,223 @@ import org.jline.reader.History;
 import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
 import org.jline.reader.Parser;
+import org.jline.reader.SyntaxError;
 import org.jline.reader.UserInterruptException;
 import org.jline.reader.Widget;
-import org.jline.reader.impl.BufferImpl;
+import org.jline.reader.impl.DefaultExpander;
+import org.jline.reader.impl.DefaultParser;
+import org.jline.reader.impl.history.DefaultHistory;
+import org.jline.terminal.MouseEvent;
 import org.jline.terminal.Terminal;
+import org.jline.utils.AttributedString;
 
-import java.util.ArrayList;
+import java.io.InputStream;
+import java.time.Instant;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
+import java.util.Objects;
+
+import static org.aesh.util.Parser.fromCodePoints;
+import static org.aesh.util.Parser.toCodePoints;
 
 /**
- * @author <a href="mailto:stale.pedersen@jboss.org">Ståle W. Pedersen</a>
+ * @author <a href="mailto:gnodet@gmail.com">Guillaume Nodet</a>
  */
 public class LineReaderImpl implements LineReader {
 
-    private Readline readline;
-    private TerminalConnection connection;
-    private TerminalImpl terminal;
-    private Prompt prompt;
-    private BufferImpl buf;
-    private CompletionWrapper completionWrapper;
+    private final Terminal terminal;
+    private final String appName;
     private final Map<String, Object> variables;
-    private final Map<Option, Boolean> options;
-    private List<Completion> completions;
 
-    public LineReaderImpl(Readline readline, TerminalConnection connection,
-                          TerminalImpl terminal, Completer completer,
-                          Prompt prompt) {
-        this.readline = readline;
-        this.connection = connection;
+    private Parser parser = new DefaultParser();
+    private Expander expander = new DefaultExpander();
+    private History history = new DefaultHistory();
+
+    private CompletionHandler completionHandler;
+
+    private final Map<Option, Boolean> options = new HashMap<>();
+
+    private EditMode editMode = EditModeBuilder.builder().create();
+
+    private Prompt prompt;
+    private ParsedLine parsedLine;
+
+    public LineReaderImpl(Terminal terminal,
+                          String appName,
+                          Map<String, Object> variables) {
+        Objects.requireNonNull(terminal);
         this.terminal = terminal;
-        if(prompt == null)
-            this.prompt = new Prompt("");
-        else
-            this.prompt = prompt;
+        this.appName = appName;
+        this.variables = variables;
 
-        variables = new HashMap<>();
-        options = new HashMap<>();
-
-        buf = new BufferImpl();
-
-        connection.setCloseHandler(close -> {
-            connection.close();
-        });
-
-        completionWrapper = new CompletionWrapper(this, completer);
-        completions = new ArrayList<>(1);
-        completions.add(completionWrapper);
-
-        if(!connection.isReading())
-            connection.openNonBlocking();
+        this.editMode = EditModeBuilder.builder().create();
+        Action enter = new Enter() {
+            @Override
+            public void accept(InputProcessor inputProcessor) {
+                acceptLine(inputProcessor);
+            }
+        };
+        this.editMode.addAction(Key.CTRL_J, enter);
+        this.editMode.addAction(Key.CTRL_M, enter);
+        this.editMode.addAction(Key.ENTER, enter);
+        this.editMode.addAction(Key.ENTER_2, enter);
     }
 
-    private String readInput(Prompt prompt) {
+    public void setParser(Parser parser) {
+        this.parser = parser;
+    }
+
+    public void setExpander(Expander expander) {
+        this.expander = expander;
+    }
+
+    public void setHistory(History history) {
+        this.history = history;
+        history.attach(this);
+    }
+
+    public void setCompleter(Completer completer) {
+        this.completionHandler = new CompletionHandlerImpl(this, completer);
+    }
+
+    public void setHighlighter(Highlighter highlighter) {
+    }
+
+    private String readInput(String buffer) {
         final String[] out = new String[1];
-        CountDownLatch latch = new CountDownLatch(1);
-       readline.readline(connection, prompt, line -> {
+        TerminalConnection connection = new TerminalConnection(terminal);
+        Readline readline = new Readline(editMode, new HistoryWrapper(history), completionHandler);
+        readline.readline(connection, prompt, line -> {
             connection.suspend();
+            connection.close();
             out[0] = line;
-            latch.countDown();
-        }, completions);
-        try {
-           // Wait until interrupted
-            latch.await();
+        }, null);
+        connection.openBlocking(buffer);
+        String line = out[0];
+        if (line != null) {
+            parsedLine = parser.parse(line, line.length(), Parser.ParseContext.ACCEPT_LINE);
+            return line;
+        } else {
+            parsedLine = null;
+            return null;
         }
-        catch(InterruptedException ie) {
-
-        }
-        if(out[0] != null) {
-            buf.clear();
-            buf.write(out[0]);
-        }
-        return out[0];
     }
 
+    private void acceptLine(InputProcessor inputProcessor) {
+        ConsoleBuffer consoleBuffer = inputProcessor.getBuffer();
+        String str = fromCodePoints(consoleBuffer.buffer().multiLine());
+
+        parsedLine = null;
+        if (!isSet(Option.DISABLE_EVENT_EXPANSION)) {
+            try {
+                String exp = expander.expandHistory(getHistory(), str);
+                if (!exp.equals(str)) {
+                    consoleBuffer.replace(exp);
+                    if (isSet(Option.HISTORY_VERIFY)) {
+                        return;
+                    }
+                }
+            } catch (IllegalArgumentException e) {
+                // Ignore
+            }
+        }
+        try {
+            parsedLine = parser.parse(str, consoleBuffer.buffer().multiCursor(), Parser.ParseContext.ACCEPT_LINE);
+        } catch (EOFError e) {
+            consoleBuffer.writeString("\n");
+            return;
+        } catch (SyntaxError e) {
+            // do nothing
+        }
+        callWidget(CALLBACK_FINISH);
+        finishBuffer(inputProcessor);
+        consoleBuffer.buffer().reset();
+    }
+
+    protected void finishBuffer(InputProcessor inputProcessor) {
+        ConsoleBuffer consoleBuffer = inputProcessor.getBuffer();
+        String str = fromCodePoints(consoleBuffer.buffer().multiLine());
+        String historyLine = str;
+
+        if (!isSet(Option.DISABLE_EVENT_EXPANSION)) {
+            StringBuilder sb = new StringBuilder();
+            boolean escaped = false;
+            for (int i = 0; i < str.length(); i++) {
+                char ch = str.charAt(i);
+                if (escaped) {
+                    escaped = false;
+                    if (ch != '\n') {
+                        sb.append(ch);
+                    }
+                } else if (ch == '\\') {
+                    escaped = true;
+                } else {
+                    sb.append(ch);
+                }
+            }
+            str = sb.toString();
+        }
+
+        // we only add it to the history if the buffer is not empty
+        // and if mask is null, since having a mask typically means
+        // the string was a password. We clear the mask after this call
+        if (str.length() > 0 && !prompt.isMasking()) {
+            history.add(Instant.now(), historyLine);
+        }
+        inputProcessor.setReturnValue(toCodePoints(str));
+    }
 
     @Override
     public Map<String, KeyMap<Binding>> defaultKeyMaps() {
         return null;
     }
 
-    @Override
     public String readLine() throws UserInterruptException, EndOfFileException {
-        return readInput(prompt);
+        return readLine(null, null, null, null);
     }
 
-    @Override
-    public String readLine(Character character) throws UserInterruptException, EndOfFileException {
-        if(character != null)
-            return readInput(new Prompt(prompt.getPromptAsString(), character));
-        else
-            return readInput(prompt);
+    /**
+     * Read the next line with the specified character mask. If null, then
+     * characters will be echoed. If 0, then no characters will be echoed.
+     */
+    public String readLine(Character mask) throws UserInterruptException, EndOfFileException {
+        return readLine(null, null, mask, null);
     }
 
-    @Override
     public String readLine(String prompt) throws UserInterruptException, EndOfFileException {
-        this.prompt = new Prompt(prompt);
-        return readInput(this.prompt);
+        return readLine(prompt, null, null, null);
     }
 
-    @Override
-    public String readLine(String prompt, Character character) throws UserInterruptException, EndOfFileException {
-        this.prompt = new Prompt(prompt, character);
-        return readInput(this.prompt);
+    /**
+     * Read a line from the <i>in</i> {@link InputStream}, and return the line
+     * (without any trailing newlines).
+     *
+     * @param prompt    The prompt to issue to the terminal, may be null.
+     * @return          A line that is read from the terminal, or null if there was null input (e.g., <i>CTRL-D</i>
+     *                  was pressed).
+     */
+    public String readLine(String prompt, Character mask) throws UserInterruptException, EndOfFileException {
+        return readLine(prompt, null, mask, null);
     }
 
-    @Override
-    public String readLine(String prompt, Character character, String s1) throws UserInterruptException, EndOfFileException {
-        this.prompt = new Prompt(prompt, character);
-        return readInput(this.prompt);
+    /**
+     * Read a line from the <i>in</i> {@link InputStream}, and return the line
+     * (without any trailing newlines).
+     *
+     * @param prompt    The prompt to issue to the terminal, may be null.
+     * @return          A line that is read from the terminal, or null if there was null input (e.g., <i>CTRL-D</i>
+     *                  was pressed).
+     */
+    public String readLine(String prompt, Character mask, String buffer) throws UserInterruptException, EndOfFileException {
+        return readLine(prompt, null, mask, buffer);
     }
 
     @Override
     public String readLine(String prompt, String rightPrompt, Character character, String buffer) throws UserInterruptException, EndOfFileException {
-        this.prompt = new Prompt(prompt, character);
-        return readInput(this.prompt);
-    }
-
-    @Override
-    public void callWidget(String s) {
-
+        // TODO: Right prompt support
+        AttributedString s = AttributedString.fromAnsi(prompt);
+        this.prompt = new Prompt(s.toString(), s.toAnsi(terminal), character);
+        return readInput(buffer);
     }
 
     @Override
@@ -168,7 +270,6 @@ public class LineReaderImpl implements LineReader {
     public Object getVariable(String s) {
         return variables.get(s);
     }
-
 
     @Override
     public void setVariable(String s, Object o) {
@@ -197,6 +298,25 @@ public class LineReaderImpl implements LineReader {
     }
 
     @Override
+    public ParsedLine getParsedLine() {
+        return parsedLine;
+    }
+
+    @Override
+    public History getHistory() {
+        return history;
+    }
+
+    @Override
+    public Parser getParser() {
+        return parser;
+    }
+
+    @Override
+    public void callWidget(String s) {
+    }
+
+    @Override
     public Map<String, Widget> getWidgets() {
         return null;
     }
@@ -207,23 +327,12 @@ public class LineReaderImpl implements LineReader {
     }
 
     @Override
-    public BufferImpl getBuffer() {
-        return buf;
-    }
-
-    @Override
-    public void runMacro(String s) {
-
-    }
-
-    @Override
-    public History getHistory() {
+    public Buffer getBuffer() {
         return null;
     }
 
     @Override
-    public Parser getParser() {
-        return new ParserImpl();
+    public void runMacro(String s) {
     }
 
     @Override
@@ -233,16 +342,11 @@ public class LineReaderImpl implements LineReader {
 
     @Override
     public Expander getExpander() {
-        return null;
+        return expander;
     }
 
     @Override
     public Map<String, KeyMap<Binding>> getKeyMaps() {
-        return null;
-    }
-
-    @Override
-    public ParsedLine getParsedLine() {
         return null;
     }
 
@@ -259,5 +363,25 @@ public class LineReaderImpl implements LineReader {
     @Override
     public int getRegionMark() {
         return 0;
+    }
+
+    @Override
+    public MouseEvent readMouseEvent() {
+        return null;
+    }
+
+    @Override
+    public String getKeyMap() {
+        return null;
+    }
+
+    @Override
+    public boolean setKeyMap(String name) {
+        return false;
+    }
+
+    @Override
+    public KeyMap<Binding> getKeys() {
+        return null;
     }
 }
